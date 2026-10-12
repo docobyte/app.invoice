@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verifikasi Dokumen Resmi - DOCOBYTE</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+  body {
+    background: #000000;
+    margin: 0;
+    padding: 24px 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-shell {
+    width: 100%;
+    max-width: 210mm;
+    margin: 0 auto;
+  }
+  .viewer-toolbar {
+    background: #000000;
+    color: #ffffff;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid #000000;
+    border-radius: 8px;
+    gap: 10px;
+  }
+  .viewer-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .verified-badge {
+    background: #000000;
+    color: #ffffff;
+    font-size: 8px;
+    font-weight: 800;
+    padding: 2.5px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.8px;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tab-group {
+    display: flex;
+    gap: 4px;
+  }
+  .tab-btn {
+    background: #000000;
+    color: #000000;
+    border: 1px solid #000000;
+    padding: 5px 11px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: #ffffff;
+    border-color: #000000;
+  }
+  .tab-btn.active {
+    background: #ffffff;
+    color: #000000;
+    border-color: #ffffff;
+  }
+  .print-btn {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #000000;
+    padding: 5px 11px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.15s ease;
+  }
+  .print-btn:hover {
+    background: #000000;
+  }
+  .canvas-scaler-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    overflow: visible;
+  }
+  .paper-canvas {
+    background: #ffffff;
+    width: 210mm;
+    min-height: 297mm;
+    box-shadow: 0 10px 30px #000000;
+    transform-origin: top center;
+    transition: transform 0.15s ease;
+  }
+  .paper-canvas iframe {
+    width: 210mm;
+    min-height: 297mm;
+    border: none;
+    display: block;
+    background: #ffffff;
+  }
+  @media (max-width: 820px) {
+    body { padding: 8px 4px; }
+    .viewer-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+    .toolbar-actions { justify-content: space-between; }
+    .tab-btn, .print-btn { flex: 1; text-align: center; padding: 7px 4px; font-size: 9px; }
+  }
+  @media print {
+    body { padding: 0; background: #ffffff; }
+    .viewer-toolbar { display: none !important; }
+    .canvas-scaler-wrapper { display: block; overflow: visible; }
+    .paper-canvas { box-shadow: none !important; width: 100% !important; min-width: 0 !important; transform: none !important; margin-bottom: 0 !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="viewer-toolbar" id="toolbar" style="display:none;">
+    <div class="viewer-title">
+      <span class="verified-badge">✓ SAH TERVERIFIKASI</span>
+      <span>DOCOBYTE</span>
+    </div>
+    <div class="toolbar-actions">
+      <button class="print-btn" onclick="printDoc()">Cetak A4</button>
+    </div>
+  </div>
+
+  <div class="canvas-scaler-wrapper">
+    <div class="paper-canvas" id="canvas">
+      <div style="text-align:center; padding: 120px 20px; color:#000000;">
+        <h3 style="font-size:15px; color:#ffffff; margin-bottom:8px;">MEMVERIFIKASI DOKUMEN...</h3>
+        <p style="font-size:11px;">Mendekripsi lembar dokumen sah langsung di browser Anda.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let CURRENT_PAYLOAD = null;
+  let ACTIVE_TAB = 'inv';
+
+  function base64urlToBytes(base64url) {
+    let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    const raw = atob(base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  async function decryptDocument(packedBase64url, keyBase64url) {
+    const keyBytes = base64urlToBytes(keyBase64url);
+    const packed = base64urlToBytes(packedBase64url);
+
+    if (packed.length < 28) throw new Error("Ukuran payload tidak valid");
+
+    const iv = packed.subarray(0, 12);
+    const tag = packed.subarray(12, 28);
+    const ciphertext = packed.subarray(28);
+
+    const encryptedData = new Uint8Array(ciphertext.length + tag.length);
+    encryptedData.set(ciphertext, 0);
+    encryptedData.set(tag, ciphertext.length);
+
+    const cryptoKey = await window.crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"]
+    );
+
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv, tagLength: 128 },
+      cryptoKey,
+      encryptedData
+    );
+
+    const dec = new TextDecoder().decode(decryptedBuffer);
+    return JSON.parse(dec);
+  }
+
+  function renderCurrentFrame() {
+    if (!CURRENT_PAYLOAD) return;
+    const html = CURRENT_PAYLOAD.html;
+
+    const canvas = document.getElementById('canvas');
+    canvas.innerHTML = '<iframe id="docFrame"></iframe>';
+    const frame = document.getElementById('docFrame');
+    frame.contentWindow.document.open();
+    frame.contentWindow.document.write(html);
+    frame.contentWindow.document.close();
+
+    // Auto fit height & scale dynamically to viewport
+    setTimeout(() => {
+      try {
+        const docBody = frame.contentWindow.document.body;
+        const h = docBody.scrollHeight;
+        if (h > 0) frame.style.height = (h + 10) + 'px';
+        scaleCanvasToFit();
+      } catch(_) {}
+    }, 200);
+  }
+
+  function scaleCanvasToFit() {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    const isPrint = window.matchMedia('print').matches;
+    if (isPrint) {
+      canvas.style.transform = 'none';
+      canvas.style.marginBottom = '0px';
+      return;
+    }
+    const container = canvas.parentElement;
+    if (!container) return;
+    const containerWidth = container.clientWidth;
+    const a4WidthPx = 794; // Lebar standar 210mm pada layar 96dpi
+
+    if (containerWidth < a4WidthPx) {
+      const scale = (containerWidth - 6) / a4WidthPx;
+      canvas.style.transform = 'scale(' + scale + ')';
+      const originalHeight = canvas.offsetHeight || 1123;
+      canvas.style.marginBottom = -((1 - scale) * originalHeight) + 'px';
+    } else {
+      canvas.style.transform = 'none';
+      canvas.style.marginBottom = '0px';
+    }
+  }
+
+  function printDoc() {
+    const frame = document.getElementById('docFrame');
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.print();
+    } else {
+      window.print();
+    }
+  }
+
+  async function initZeroKnowledgeVerification() {
+    const url = new URL(window.location.href);
+    const docId = url.searchParams.get('id') || url.searchParams.get('no');
+
+    let key = '';
+    if (window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      key = hashParams.get('k') || hashParams.get('key');
+    }
+
+    // Jika dibuka tanpa QR scan, arahkan ke situs DOCOBYTE.
+    if (!docId || !key) {
+      window.location.replace("https://docobyte.github.io/app.invoice/");
+      return;
+    }
+
+    try {
+      const res = await fetch('d/' + encodeURIComponent(docId) + '.enc');
+      if (!res.ok) throw new Error("Dokumen terenkripsi tidak ditemukan di server.");
+      const ciphertext = await res.text();
+
+      CURRENT_PAYLOAD = await decryptDocument(ciphertext.trim(), key.trim());
+
+      document.getElementById('toolbar').style.display = 'flex';
+      renderCurrentFrame();
+    } catch (err) {
+      document.getElementById('canvas').innerHTML = `
+        <div style="text-align:center; padding:80px 20px; background:#ffffff; border:1px solid #000000; margin:40px auto; max-width:480px;">
+          <div style="width:48px; height:48px; margin:0 auto 14px auto; background:#000000; display:flex; align-items:center; justify-content:center; border-radius:8px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+          </div>
+          <h3 style="color:#000000; font-size:15px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px;">
+            DOKUMEN TIDAK VALID / GAGAL VERIFIKASI
+          </h3>
+          <p style="font-size:10.5px; color:#000000; line-height:1.45; margin:0 0 10px 0;">
+            Kunci kriptografis pada QR Code tidak cocok atau data transaksi telah dimodifikasi dari versi aslinya.
+          </p>
+          <div style="font-size:9px; font-family:monospace; color:#000000; background:#000000; padding:4px 8px; border:1px solid #000000;">
+            Error: ${err.message}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  window.addEventListener('resize', scaleCanvasToFit);
+  window.addEventListener('DOMContentLoaded', initZeroKnowledgeVerification);
+</script>
+</body>
+</html>
